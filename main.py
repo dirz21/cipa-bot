@@ -1,7 +1,7 @@
 import telebot, json, os, time, secrets, threading
 from telebot import types
 from datetime import datetime
-from flask import Flask
+from flask import Flask, request
 
 BOT_TOKEN = "8674370589:AAECouJNY7HFF9EPyKjOvqNFlPRcgunsL9w"
 ADMIN_ID  = 6847073444
@@ -14,6 +14,31 @@ app = Flask(__name__)
 def home():
     return "CIPA ONLY VIP - bot alive"
 
+@app.route("/validate")
+def validate():
+    key = request.args.get("key", "").strip().upper()
+    hwid = request.args.get("hwid", "").strip()[:32]
+    if not key or not hwid:
+        return {"valid": False, "error": "missing_params"}, 400
+    d = load()
+    if key not in d["keys"]:
+        return {"valid": False, "error": "not_found"}
+    r = d["keys"][key]
+    now = int(time.time())
+    if r.get("used"):
+        exp = r.get("expired_at") or 0
+        if now > exp:
+            return {"valid": False, "error": "expired"}
+        if r.get("device_id") and r["device_id"] != hwid:
+            return {"valid": False, "error": "hwid_mismatch"}
+        return {"valid": True, "expires": exp}
+    exp = now + r["duration"]
+    r["used"] = True
+    r["expired_at"] = exp
+    r["device_id"] = hwid
+    save(d)
+    return {"valid": True, "expires": exp, "bound": True}
+    
 def run_web():
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
